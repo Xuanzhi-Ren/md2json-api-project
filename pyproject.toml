@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "md2json-api"
+version = "0.2.0"
+description = "Convert mathematical Markdown into section JSON using OpenAI-compatible APIs."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "openai>=1.68.0"
+]
+
+[project.scripts]
+md2json-api = "md2json_api.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["md2json_api*"]

@@ -116,7 +116,10 @@ def split_plan_from_structure_plan(
         warnings.append("LLM structure sections were not sorted; sorted by start_line")
 
     chapter = str(plan.get("chapter") or "").strip() or _fallback_chapter(fallback_plan, source_name)
-    chapter_number = str(plan.get("chapter_number") or "").strip() or _fallback_chapter_number(fallback_plan)
+    if "chapter_number" in plan:
+        chapter_number = str(plan.get("chapter_number") or "").strip()
+    else:
+        chapter_number = _fallback_chapter_number(fallback_plan)
 
     sections: list[MarkdownSection] = []
     previous_end = 0

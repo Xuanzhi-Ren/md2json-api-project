@@ -525,6 +525,27 @@ Planning principles:
 - Use exact 1-based line numbers from the candidate list. Do not invent line numbers.
 - Section ranges must be non-overlapping and in source order. A section range should include its heading line and all body text through the line before the next canonical section or back matter.
 - If uncertain, choose fewer, broader sections rather than fragmenting a section into many item-level headings.
+
+Chapter and section metadata audit:
+- Before producing the final JSON, audit the chapter, chapter_number, section_number, and section_title values for naming contamination.
+- Treat tables of contents, reading guides, series title pages, comments/references sections, bibliography entries, and index entries as unreliable sources for canonical JSON naming unless the document itself is only that material.
+- Do not inherit a Part heading as chapter_number merely because it appears before a section. Part I/II/VIII headings are often structural dividers inside a complete book; they should not become chapter_number for ordinary numbered book sections unless the source truly uses parts as the JSON chapter level.
+- For a complete book organized directly into numbered sections such as "SECTION 1", "SECTION 2", ..., prefer a book-level chapter such as "Complete book" and an empty chapter_number, while keeping section_number as "1", "2", etc.
+- For a single chapter excerpt organized into subsections, keep the true chapter number and use subsection numbers as section_number.
+- For a paper, keep chapter_number empty unless there is an explicit chapter-like unit in the source.
+- Do not prefix section_number with a stale chapter or part number. For example, do not turn section "13" into "VIII.13" or bibliography author "A. Brøndsted" into "VIII.A".
+- section_title must name the canonical source section, not a table-of-contents entry, author name from a bibliography, running header, proof label, or theorem label.
+- If hard splitter metadata conflicts with candidate headings or looks contaminated, repair it rather than copying it. Record important naming repairs or remaining uncertainty in warnings.
+"""
+
+
+STRUCTURE_METADATA_AUDIT_CHECKLIST = """Final metadata self-audit to perform before returning JSON:
+1. Decide the intended JSON context level: complete book, one chapter, one section excerpt, paper, or appendix.
+2. Check whether chapter/chapter_number came from a true chapter-like source heading, not from a Part divider, table of contents, comments/references, bibliography, index, or hard splitter fallback.
+3. Check every section_number and section_title against the candidate heading that starts the section. Keep canonical book/paper numbering and remove stale chapter/part prefixes.
+4. Check whether any lettered section is actually a bibliography author entry or index heading. If so, move it to back_matter_ranges instead of sections.
+5. Check whether named back matter such as Comments and References, Bibliography, References, or Index is excluded from body sections unless it is the actual requested document body.
+6. Put the repaired chapter/chapter_number and repaired section metadata directly in the normal output fields. Do not add extra JSON keys. If you repaired naming contamination or are uncertain, add a concise warning.
 """
 
 
@@ -571,6 +592,8 @@ Hard splitter warnings:
 
 Candidate headings/items with neighboring context:
 {chr(10).join(candidate_lines) if candidate_lines else "(none)"}
+
+{STRUCTURE_METADATA_AUDIT_CHECKLIST}
 
 Return:
 1. document_title

@@ -28,7 +28,10 @@ FIELD_SPEC = """Field specification for every item:
   1-based order of the item inside the current supplied section. Preserve source order.
 
 - label:
-  Use the style "<Type> <chapter_number>-<section_number>-<local_item_index>", for example "Definition 4-4.2-1" or "Theorem 2-2.3-2". The converter will normalize labels later, but fill this field plausibly.
+  Use source-aware labels.
+  If the source item has an explicit printed number or label, the label must preserve that source number in canonical English form: "<Type> <source_number>". Examples: "Theorem 6.1", "Definition 1.2.4", "Corollary 6.1.1", "Algorithm 1". This label must match number_components joined by "." and must not use the local extraction index.
+  If the item is inferred from unnumbered prose or has no explicit printed source number, use a synthetic label that cannot be confused with source numbering: "<Type> <section_number>-extra-<local_synthetic_index>", for example "Definition 6-extra-1" or "Remark 4.2-extra-1". These synthetic items must not consume or shift explicit source numbers.
+  The converter will validate labels later, but fill this field with the same source-aware rule so raw API traces are useful.
 
 - env:
   Use only one allowed value. Map source labels conservatively:
@@ -44,7 +47,7 @@ FIELD_SPEC = """Field specification for every item:
   Preserve source text closely, including explicit source labels, Markdown tables, displayed formulas, punctuation, and LaTeX. Do not summarize, translate, or silently rewrite mathematical content. Keep "Theorem 2.1.", "定义 1.2.4", "Algorithm 1" and similar source labels in content.
 
 - dependencies:
-  Default to []. Fill only when the source explicitly names a dependency and the name is recoverable without guessing, such as "by Theorem 2.1" or "using Lemma 3.4". Do not infer hidden dependencies.
+  Default to []. Fill only when the source explicitly names a dependency and the name is recoverable without guessing, such as "by Theorem 2.1" or "using Lemma 3.4". Use the same canonical source-aware labels as label, so an explicit dependency on "Theorem 6.1" stays "Theorem 6.1" rather than a synthetic local-index label. Do not infer hidden dependencies.
 
 - proof:
   Use null unless a proof block is explicitly marked. When a proof boundary is explicit, put the proof body in proof and keep the statement in content. Do not create standalone proof items.
@@ -85,7 +88,7 @@ Output:
   "items": [
     {
       "index": 1,
-      "label": "Definition 4-4.2-1",
+      "label": "Definition 4.2-extra-1",
       "env": "def",
       "number_components": [],
       "context": {
@@ -119,7 +122,7 @@ Output:
   "items": [
     {
       "index": 1,
-      "label": "Theorem 1-1.3-1",
+      "label": "Theorem 1",
       "env": "thm",
       "number_components": ["1"],
       "context": {
@@ -153,7 +156,7 @@ Output:
   "items": [
     {
       "index": 1,
-      "label": "Definition 5-5.7-1",
+      "label": "Definition 5.7-extra-1",
       "env": "def",
       "number_components": [],
       "context": {
@@ -168,7 +171,7 @@ Output:
     },
     {
       "index": 2,
-      "label": "Exercise 5-5.7-2",
+      "label": "Exercise 5.4",
       "env": "exercise",
       "number_components": ["5", "4"],
       "context": {
@@ -204,7 +207,7 @@ Output:
   "items": [
     {
       "index": 1,
-      "label": "Theorem -2.1-1",
+      "label": "Theorem 2.3",
       "env": "thm",
       "number_components": ["2", "3"],
       "context": {
@@ -219,7 +222,7 @@ Output:
     },
     {
       "index": 2,
-      "label": "Algorithm -2.1-2",
+      "label": "Algorithm 1",
       "env": "algorithm",
       "number_components": ["1"],
       "context": {
@@ -255,7 +258,7 @@ Output:
   "items": [
     {
       "index": 1,
-      "label": "Definition 1-1.2-1",
+      "label": "Definition 1.2.4",
       "env": "def",
       "number_components": ["1", "2", "4"],
       "context": {
@@ -270,7 +273,7 @@ Output:
     },
     {
       "index": 2,
-      "label": "Proposition 1-1.2-2",
+      "label": "Proposition 1.2.9",
       "env": "prop",
       "number_components": ["1", "2", "9"],
       "context": {
@@ -346,7 +349,7 @@ Audit targets:
 - proof should be merged: proof was split when the boundary is not explicit or belongs elsewhere.
 - duplicate or spurious item: JSON has a repeated item or an item not supported by the source.
 - wrong item boundary: one source item was split into fragments, or multiple source items were merged incorrectly.
-- wrong ordering or numbering.
+- wrong ordering, numbering, or label style. Explicitly numbered source items must keep their source labels, while unnumbered inferred items must use synthetic "-extra-" labels.
 - broken dependency: dependency is invented, malformed, or an explicit dependency is clearly missing.
 
 Conservative repair principles:
@@ -381,7 +384,7 @@ Proof. Let $G$ be a finite subgroup ...
 Current JSON item:
 ```json
 {
-  "label": "Theorem 1-1.1-1",
+  "label": "Theorem 1",
   "env": "thm",
   "content": "Theorem 1. Every finite subgroup of $K^\\times$ is cyclic.\n\nProof. Let $G$ be a finite subgroup ...",
   "proof": null
@@ -390,7 +393,7 @@ Current JSON item:
 
 Expected repair:
 - finding: proof should be split
-- patch action: update target_label "Theorem 1-1.1-1"
+- patch action: update target_label "Theorem 1"
 - repaired item content ends before "Proof."
 - repaired item proof is "Let $G$ be a finite subgroup ..."
 
@@ -444,7 +447,7 @@ Extraction discipline:
 - Treat this as one source section/chunk produced by an external splitter.
 - Prefer omission over noisy extraction for non-mathematical connective prose.
 - Preserve source order.
-- The converter will overwrite index, context, and label after validation; still fill them plausibly.
+- The converter will validate index, context, and label after parsing; still fill label with the source-aware rule because raw API traces should be meaningful.
 
 Markdown section:
 

@@ -82,15 +82,15 @@ set -a
 source ~/.config/md2json/azure.env
 set +a
 
-python3 -m md2json_api.cli convert /path/to/input.md \
+python3 -m md2json_api.cli convert /home/xuanzhi_ren/Pdf2jsonPipeline/Test/Convex-analysis-Ralph-Tyrell-Rockafellar-20260521165850/Convex-analysis-Ralph-Tyrell-Rockafellar.md \
   --backend azure \
   --model "$MD2JSON_MODEL" \
   --azure-endpoint "$AZURE_OPENAI_ENDPOINT" \
   --azure-api-version "$AZURE_OPENAI_API_VERSION" \
   --prompt-profile auto \
-  --structure-mode auto \
-  --audit-mode auto \
-  --out-dir /path/to/output_json
+  --structure-mode llm \
+  --audit-mode llm \
+  --out-dir /home/xuanzhi_ren/Pdf2jsonPipeline/Test/Convex-analysis-Ralph-Tyrell-Rockafellar-20260521165850/output_json3
 ```
 
 如果一次长文档转换中途断开，使用同一个 `--out-dir` 并加 `--resume`：
@@ -197,7 +197,7 @@ set -a
 source ~/.config/md2json/azure.env
 set +a
 
-python3 -m md2json_api.cli convert /path/to/input.md \
+python3 -m md2json_api.cli convert /home/xuanzhi_ren/Pdf2jsonPipeline/Test/Convex-analysis-Ralph-Tyrell-Rockafellar-20260521165850/Convex-analysis-Ralph-Tyrell-Rockafellar.md \
   --backend azure \
   --model "$MD2JSON_MODEL" \
   --azure-endpoint "$AZURE_OPENAI_ENDPOINT" \
@@ -205,7 +205,7 @@ python3 -m md2json_api.cli convert /path/to/input.md \
   --prompt-profile auto \
   --structure-mode llm \
   --audit-mode llm \
-  --out-dir /path/to/output_json
+  --out-dir /home/xuanzhi_ren/Pdf2jsonPipeline/Test/Convex-analysis-Ralph-Tyrell-Rockafellar-20260521165850/output_json2
 ```
 
 - `auto`：默认。按 section 内容自动选择 `textbook`、`paper` 或 `chinese_math`。

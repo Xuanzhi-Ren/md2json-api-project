@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -31,6 +32,26 @@ from .structure_planner import (
     OpenAIStructurePlanner,
 )
 from .writers import write_outputs
+
+
+SOURCE_LABEL_ALIASES = {
+    "def": ("Definition", "Definitions", "Def.", "Def", "定义"),
+    "thm": ("Theorem", "THEOREM", "Thm.", "Thm", "定理"),
+    "prop": ("Proposition", "PROPOSITION", "Prop.", "Prop", "命题"),
+    "lemma": ("Lemma", "LEMMA", "引理"),
+    "cor": ("Corollary", "COROLLARY", "Cor.", "Cor", "推论"),
+    "remark": ("Remark", "REMARK", "Remarks", "注", "注记"),
+    "example": ("Example", "EXAMPLE", "例"),
+    "exercise": ("Exercise", "EXERCISE", "Exercises", "练习"),
+    "algorithm": ("Algorithm", "ALGORITHM", "算法"),
+    "assumption": ("Assumption", "ASSUMPTION", "假设"),
+    "claim": ("Claim", "CLAIM", "断言"),
+    "conjecture": ("Conjecture", "CONJECTURE", "猜想"),
+    "problem": ("Problem", "PROBLEM", "问题"),
+    "question": ("Question", "QUESTION"),
+    "notation": ("Notation", "NOTATION", "记号"),
+}
+SOURCE_NUMBER_RE = r"((?:[IVXLCDM]+|\d+[A-Za-z]?|[A-Z])(?:\.(?:[IVXLCDM]+|\d+[A-Za-z]?|[A-Z]))*)"
 
 
 class SectionExtractor(Protocol):
@@ -258,24 +279,41 @@ class MarkdownJsonConverter:
 
 def normalize_items(raw_items: list[dict[str, Any]], section: MarkdownSection, global_start: int) -> list[dict[str, Any]]:
     normalized: list[dict[str, Any]] = []
+    raw_label_map: dict[str, str] = {}
+    synthetic_index = 0
     for local_index, raw in enumerate(raw_items, start=1):
         env = normalize_env(raw.get("env"))
         if env not in ALLOWED_ENVS:
             env = "remark"
         ctx = section.context.as_json()
-        label = build_label(env, ctx, local_index)
+        raw_label = str(raw.get("label", "")).strip()
+        content = str(raw.get("content", "")).strip()
+        number_components = normalize_number_components(raw.get("number_components", [])) or infer_number_components(
+            env,
+            content,
+        )
+        if number_components:
+            label = build_label(env, ctx, local_index, number_components=number_components)
+        else:
+            synthetic_index += 1
+            label = build_label(env, ctx, local_index, synthetic_index=synthetic_index)
         item = {
             "index": local_index,
             "label": label,
             "env": env,
-            "number_components": normalize_number_components(raw.get("number_components", [])),
+            "number_components": number_components,
             "context": ctx,
-            "content": str(raw.get("content", "")).strip(),
+            "content": content,
             "dependencies": normalize_dependencies(raw.get("dependencies", [])),
             "proof": normalize_proof(raw.get("proof")),
         }
         if item["content"]:
+            if raw_label and raw_label != label:
+                raw_label_map[raw_label] = label
             normalized.append(item)
+    if raw_label_map:
+        for item in normalized:
+            item["dependencies"] = [raw_label_map.get(dep, dep) for dep in item["dependencies"]]
     return normalized
 
 
@@ -315,14 +353,25 @@ def normalize_env(value: Any) -> str:
     return ENV_ALIASES.get(raw.lower(), "remark")
 
 
-def build_label(env: str, context: dict[str, str], local_index: int) -> str:
-    chapter_number = str(context.get("chapter_number") or "").strip()
+def build_label(
+    env: str,
+    context: dict[str, str],
+    local_index: int,
+    *,
+    number_components: list[str] | None = None,
+    synthetic_index: int | None = None,
+) -> str:
+    if number_components:
+        return f"{ENV_DISPLAY[env]} {'.'.join(number_components)}"
+    number_prefix = synthetic_label_prefix(context)
+    suffix = synthetic_index if synthetic_index is not None else local_index
+    return f"{ENV_DISPLAY[env]} {number_prefix}-extra-{suffix}"
+
+
+def synthetic_label_prefix(context: dict[str, str]) -> str:
     section_number = str(context.get("section_number") or "").strip()
-    if chapter_number and section_number:
-        number_prefix = f"{chapter_number}-{section_number}"
-    else:
-        number_prefix = chapter_number or section_number or "section"
-    return f"{ENV_DISPLAY[env]} {number_prefix}-{local_index}"
+    chapter_number = str(context.get("chapter_number") or "").strip()
+    return section_number or chapter_number or "section"
 
 
 def normalize_number_components(value: Any) -> list[str]:
@@ -335,6 +384,23 @@ def normalize_number_components(value: Any) -> list[str]:
             continue
         output.append(text)
     return output
+
+
+def infer_number_components(env: str, content: str) -> list[str]:
+    labels = SOURCE_LABEL_ALIASES.get(env)
+    if not labels:
+        return []
+    first_line = content.splitlines()[0] if content else ""
+    first_line = re.sub(r"^\s*(?:#{1,6}\s*)?[*_`]+", "", first_line)
+    label_pattern = "|".join(re.escape(label) for label in labels)
+    match = re.match(
+        rf"^\s*(?:{label_pattern})\s*[:：.]?\s*{SOURCE_NUMBER_RE}(?=[\s.:：)）(]|$)",
+        first_line,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return []
+    return [part for part in match.group(1).split(".") if part]
 
 
 def normalize_dependencies(value: Any) -> list[str]:

@@ -22,7 +22,7 @@ ITEM_HEADING_RE = re.compile(
 )
 
 
-def build_structure_candidates(source_text: str, *, max_candidates: int = 800) -> list[dict[str, Any]]:
+def build_structure_candidates(source_text: str, *, max_candidates: int = 5000) -> list[dict[str, Any]]:
     lines = source_text.splitlines()
     candidates: list[dict[str, Any]] = []
     for index, line in enumerate(lines, start=1):

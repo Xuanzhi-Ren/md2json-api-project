@@ -131,6 +131,90 @@ class AuditSourceToolTests(unittest.TestCase):
         )
         self.assertEqual(result["tool_validation"]["declared_labels_count"], 2)
 
+    def test_preserved_item_with_non_source_backed_text_is_repaired_from_declared_anchors(self) -> None:
+        section = MarkdownSection(
+            index=9,
+            context=SectionContext(
+                chapter="Complete book",
+                chapter_number="",
+                section="9. Some Closedness Criteria",
+                section_number="9",
+            ),
+            text=(
+                "Corollary 9.2.1. Let \\( {f}_{1} \\) satisfy \\( {z}_{1}\\right) \\leq 0.\n\n"
+                "Proof. Apply Theorem 9.2. ||\n\n"
+                "COROLLARY 9.2.2. Let \\( {f}_{2} \\) satisfy another condition."
+            ),
+            start_line=100,
+            end_line=105,
+            heading_level=2,
+            source_heading="Some Closedness Criteria",
+        )
+        current_items = [
+            {
+                "index": 1,
+                "label": "Corollary 9.2.1",
+                "env": "cor",
+                "number_components": ["9", "2", "1"],
+                "context": section.context.as_json(),
+                "content": "Corollary 9.2.1. Let \\( {f}_{1} \\) satisfy \\( {{z}_{1}}\\right) \\leq 0.",
+                "dependencies": ["Theorem 9.2"],
+                "proof": "Apply Theorem 9.2. ||",
+            },
+            {
+                "index": 2,
+                "label": "Corollary 9.2.2",
+                "env": "cor",
+                "number_components": ["9", "2", "2"],
+                "context": section.context.as_json(),
+                "content": "COROLLARY 9.2.2. Let \\( {f}_{2} \\) satisfy another condition.",
+                "dependencies": [],
+                "proof": None,
+            },
+        ]
+        executor = AuditSourceToolExecutor(section, current_items)
+
+        result = executor.execute(
+            "build_repaired_items",
+            {
+                "audit_markdown": "Preserve declared items.",
+                "overall_assessment": "no change",
+                "actions": [],
+                "open_questions": [],
+                "items": [
+                    {
+                        "label": "Corollary 9.2.1",
+                        "env": "cor",
+                        "number_components": ["9", "2", "1"],
+                        "dependencies": ["Theorem 9.2"],
+                        "content_span": None,
+                        "proof_span": None,
+                        "preserve_current_label": "Corollary 9.2.1",
+                        "source_order_anchor": "Corollary 9.2.1.",
+                        "reason": "preserve item using source anchors if current text is not source-backed",
+                    },
+                    {
+                        "label": "Corollary 9.2.2",
+                        "env": "cor",
+                        "number_components": ["9", "2", "2"],
+                        "dependencies": [],
+                        "content_span": None,
+                        "proof_span": None,
+                        "preserve_current_label": "Corollary 9.2.2",
+                        "source_order_anchor": "COROLLARY 9.2.2.",
+                        "reason": "unchanged next item",
+                    },
+                ],
+            },
+        )
+
+        items = result["repaired_items"]
+        self.assertEqual([item["label"] for item in items], ["Corollary 9.2.1", "Corollary 9.2.2"])
+        self.assertIn("\\( {z}_{1}\\right)", items[0]["content"])
+        self.assertNotIn("{{z}_{1}}", items[0]["content"])
+        self.assertEqual(items[0]["proof"], "Apply Theorem 9.2. ||")
+        self.assertEqual(result["tool_validation"]["warnings"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

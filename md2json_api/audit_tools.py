@@ -8,6 +8,9 @@ from typing import Any
 from .models import ALLOWED_ENVS, MarkdownSection
 
 
+PROOF_BOUNDARY_RE = re.compile(r"(?im)^\s*(?:Proof|PROOF|证明)\s*[.:：]?\s*")
+
+
 def audit_source_tool_schemas() -> list[dict[str, Any]]:
     span = _span_schema()
     return [
@@ -236,10 +239,9 @@ class AuditSourceToolExecutor:
         warnings: list[str] = []
         order_positions: list[int] = []
 
-        for raw in arguments.get("items") or []:
-            if not isinstance(raw, dict):
-                continue
-            built, validation, order_position = self._build_one_item(raw)
+        raw_items = [raw for raw in arguments.get("items") or [] if isinstance(raw, dict)]
+        for index, raw in enumerate(raw_items):
+            built, validation, order_position = self._build_one_item(raw, raw_items[index + 1 :])
             validations.append(validation)
             if built is None:
                 warnings.append(validation["message"])
@@ -280,7 +282,11 @@ class AuditSourceToolExecutor:
             },
         }
 
-    def _build_one_item(self, raw: dict[str, Any]) -> tuple[dict[str, Any] | None, dict[str, Any], int]:
+    def _build_one_item(
+        self,
+        raw: dict[str, Any],
+        following_raws: list[dict[str, Any]],
+    ) -> tuple[dict[str, Any] | None, dict[str, Any], int]:
         label = str(raw.get("label") or "").strip()
         preserve_label = _nullable_string(raw.get("preserve_current_label")) or label
         current = self.current_by_label.get(preserve_label)
@@ -290,12 +296,17 @@ class AuditSourceToolExecutor:
 
         content_result = None
         proof_result = None
+        fallback = None
         if isinstance(content_span, dict):
             content_result = _extract_span_from_source(self.section, content_span)
             if content_result.get("found"):
                 order_position = min(order_position, int(content_result["char_start"]))
         if isinstance(proof_span, dict):
             proof_result = _extract_span_from_source(self.section, proof_span)
+        if content_result is None and current is not None and not item_text_is_source_backed(current, self.section.text):
+            fallback = self._fallback_item_from_declared_anchors(raw, following_raws)
+            if fallback is not None:
+                order_position = min(order_position, int(fallback["char_start"]))
 
         validation = {
             "label": label,
@@ -321,6 +332,9 @@ class AuditSourceToolExecutor:
             located = locate_text(self.section.text, content)
             if located is not None:
                 order_position = min(order_position, located)
+        elif fallback is not None:
+            content = str(fallback.get("content") or "").strip()
+            validation["content_source"] = "declared_anchor_span"
         else:
             validation["ok"] = False
             validation["message"] = f"No source-backed content available for {label}."
@@ -328,6 +342,9 @@ class AuditSourceToolExecutor:
 
         if proof_result is not None:
             proof_text = str(proof_result.get("text") or "").strip() or None
+        elif fallback is not None:
+            proof_text = fallback.get("proof")
+            validation["proof_source"] = "declared_anchor_span_or_null"
         elif current is not None and source_text_contains(self.section.text, current.get("proof")):
             proof_text = current.get("proof")
         else:
@@ -344,6 +361,34 @@ class AuditSourceToolExecutor:
             "proof": proof_text,
         }
         return item, validation, order_position
+
+    def _fallback_item_from_declared_anchors(
+        self,
+        raw: dict[str, Any],
+        following_raws: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        anchor = str(raw.get("source_order_anchor") or "").strip()
+        if not anchor:
+            return None
+        start = _find_first(self.section.text, anchor)
+        if start is None:
+            return None
+        end = len(self.section.text)
+        search_from = start + max(1, len(anchor))
+        for following in following_raws:
+            next_anchor = str(following.get("source_order_anchor") or "").strip()
+            if not next_anchor:
+                continue
+            next_pos = _find_first_after(self.section.text, next_anchor, search_from)
+            if next_pos is not None:
+                end = next_pos
+                break
+        if end <= start:
+            return None
+        content, proof = split_statement_and_proof(self.section.text[start:end].strip())
+        if not content:
+            return None
+        return {"content": content, "proof": proof, "char_start": start, "char_end": end}
 
 
 def _span_schema() -> dict[str, Any]:
@@ -486,6 +531,19 @@ def source_text_contains(source_text: str, value: str | None) -> bool:
     return _normalize_ws(text) in _normalize_ws(source_text)
 
 
+def item_text_is_source_backed(item: dict[str, Any], source_text: str) -> bool:
+    return source_text_contains(source_text, item.get("content")) and source_text_contains(source_text, item.get("proof"))
+
+
+def split_statement_and_proof(block: str) -> tuple[str, str | None]:
+    match = PROOF_BOUNDARY_RE.search(block)
+    if match is None:
+        return block.strip(), None
+    content = block[: match.start()].strip()
+    proof = block[match.end() :].strip()
+    return content, proof or None
+
+
 def locate_text(source_text: str, value: str | None) -> int | None:
     text = str(value or "").strip()
     if not text:
@@ -512,6 +570,13 @@ def _find_first(text: str, query: str) -> int | None:
     if not query:
         return None
     pos = text.find(query)
+    return pos if pos >= 0 else None
+
+
+def _find_first_after(text: str, query: str, start: int) -> int | None:
+    if not query:
+        return None
+    pos = text.find(query, start)
     return pos if pos >= 0 else None
 
 

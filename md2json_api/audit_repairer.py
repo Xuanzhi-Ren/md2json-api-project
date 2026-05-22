@@ -14,6 +14,7 @@ from .schema import (
     chat_audit_repair_json_schema_response_format,
     responses_audit_repair_json_schema_format,
 )
+from .source_grounding import ground_audit_repair_payload
 
 
 class NoopSectionAuditRepairer:
@@ -22,7 +23,7 @@ class NoopSectionAuditRepairer:
         section: MarkdownSection,
         current_items: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        return _noop_payload(section, current_items)
+        return ground_audit_repair_payload(section, current_items, _noop_payload(section, current_items))
 
 
 class MockSectionAuditRepairer(NoopSectionAuditRepairer):
@@ -117,7 +118,7 @@ class OpenAISectionAuditRepairer:
     ) -> dict[str, Any]:
         cached = _read_cached_audit_response(self.trace_dir, section)
         if cached is not None:
-            return cached
+            return ground_audit_repair_payload(section, current_items, cached)
         request: dict[str, Any] = {
             "model": self.model,
             "input": [
@@ -132,6 +133,7 @@ class OpenAISectionAuditRepairer:
         response = _with_retries(lambda: self.client.responses.create(**request))
         output_text = getattr(response, "output_text", None) or _collect_response_text(response)
         payload = _parse_audit_payload(output_text, provider="OpenAI")
+        payload = ground_audit_repair_payload(section, current_items, payload)
         self._write_trace(section, request, output_text, payload, usage=_response_usage(response))
         return payload
 
@@ -206,7 +208,7 @@ class AzureChatSectionAuditRepairer:
     ) -> dict[str, Any]:
         cached = _read_cached_audit_response(self.trace_dir, section)
         if cached is not None:
-            return cached
+            return ground_audit_repair_payload(section, current_items, cached)
         request: dict[str, Any] = {
             "model": self.model,
             "messages": [
@@ -226,6 +228,7 @@ class AzureChatSectionAuditRepairer:
             output_text = response.choices[0].message.content or ""
             usage = _response_usage(response)
         payload = _parse_audit_payload(output_text, provider="Azure OpenAI")
+        payload = ground_audit_repair_payload(section, current_items, payload)
         self._write_trace(section, request, output_text, payload, usage=usage)
         return payload
 

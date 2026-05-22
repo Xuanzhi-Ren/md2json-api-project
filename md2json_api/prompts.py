@@ -341,6 +341,12 @@ Task:
 3. Find only clear, defensible problems.
 4. Produce a repair pack and a repaired full item array.
 
+Important source-grounding contract:
+- Treat source text as the only authority for content/proof.
+- Do not paraphrase, compress, modernize notation, or reconstruct omitted proof steps in repaired_items.
+- For missing or truncated explicit numbered items, identify the source label and anchor clearly; the pipeline will locate that label in the supplied Markdown and copy the source span directly.
+- repaired_items may include candidate content/proof, but every accepted content/proof field must be recoverable from the supplied Markdown section. Non-source text will be rejected by post-audit validation.
+
 Audit targets:
 - missing item: an explicit definition/theorem/proposition/lemma/corollary/remark/example/exercise/algorithm/claim/etc. is absent.
 - truncated item: content or proof visibly stops early or loses formulas/paragraphs.
@@ -355,6 +361,7 @@ Audit targets:
 Conservative repair principles:
 - Preserve current JSON whenever it is defensible.
 - Do not rewrite the whole section merely for style.
+- Do not rewrite mathematical prose or proof text. Prefer exact source excerpts over generated repairs.
 - Do not add ordinary explanatory paragraphs as remarks unless they are central definition/notation/opening blocks.
 - Split proof only when the boundary is explicit.
 - Do not invent dependencies.
@@ -366,7 +373,7 @@ Output requirements:
 - For add actions, include an anchor when possible, provisional_label, env, reason, content_excerpt, and candidate_item when confident.
 - For update actions, include target_label, reason, and field_updates_note.
 - For delete actions, include target_label and reason.
-- repaired_items must be the full final JSON array for this section after applying the high-confidence actions. If no change, repaired_items must equal the current JSON items except for harmless schema normalization.
+- repaired_items must be the full final JSON array for this section after applying the high-confidence actions. If no change, repaired_items must equal the current JSON items except for harmless schema normalization. Keep content/proof source-grounded; for missing explicit numbered items, exact label/number/env/order are more important than drafting long text, because source-span extraction will repair the fields.
 """
 
 

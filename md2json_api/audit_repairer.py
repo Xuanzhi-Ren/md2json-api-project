@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 import time
@@ -8,11 +9,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from .audit_tools import AuditSourceToolExecutor, audit_source_tool_schemas
 from .models import MarkdownSection
 from .prompts import build_audit_repair_prompt, build_audit_repair_system_prompt
 from .schema import (
     chat_audit_repair_json_schema_response_format,
-    responses_audit_repair_json_schema_format,
 )
 
 
@@ -118,21 +119,16 @@ class OpenAISectionAuditRepairer:
         cached = _read_cached_audit_response(self.trace_dir, section)
         if cached is not None:
             return cached
-        request: dict[str, Any] = {
-            "model": self.model,
-            "input": [
-                {"role": "system", "content": build_audit_repair_system_prompt(self.prompt_profile, section)},
-                {"role": "user", "content": build_audit_repair_prompt(section, current_items, self.prompt_profile)},
-            ],
-            "text": {"format": responses_audit_repair_json_schema_format()},
-        }
-        if self.max_output_tokens:
-            request["max_output_tokens"] = self.max_output_tokens
-
-        response = _with_retries(lambda: self.client.responses.create(**request))
-        output_text = getattr(response, "output_text", None) or _collect_response_text(response)
-        payload = _parse_audit_payload(output_text, provider="OpenAI")
-        self._write_trace(section, request, output_text, payload, usage=_response_usage(response))
+        request, output_text, payload, usage = _run_chat_tool_audit(
+            create_completion=lambda request_payload: self.client.chat.completions.create(**request_payload),
+            model=self.model,
+            section=section,
+            current_items=current_items,
+            prompt_profile=self.prompt_profile,
+            max_output_tokens=self.max_output_tokens,
+            max_tokens_key="max_completion_tokens",
+        )
+        self._write_trace(section, request, output_text, payload, usage=usage)
         return payload
 
     def _write_trace(
@@ -149,7 +145,7 @@ class OpenAISectionAuditRepairer:
         _write_trace(
             self.trace_dir,
             section,
-            provider_shape="openai_responses",
+            provider_shape="openai_chat_completions_tools",
             request_payload=request_payload,
             response_text=response_text,
             response_payload=response_payload,
@@ -207,29 +203,23 @@ class AzureChatSectionAuditRepairer:
         cached = _read_cached_audit_response(self.trace_dir, section)
         if cached is not None:
             return cached
-        request: dict[str, Any] = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": build_audit_repair_system_prompt(self.prompt_profile, section)},
-                {"role": "user", "content": build_audit_repair_prompt(section, current_items, self.prompt_profile)},
-            ],
-            "response_format": chat_audit_repair_json_schema_response_format(),
-        }
-        if self.max_output_tokens:
-            request["max_tokens"] = self.max_output_tokens
-
-        usage: dict[str, Any] | None = None
         if self.client is False:
-            output_text = _with_retries(lambda: self._audit_repair_via_rest(request))
+            create_completion = self._chat_completion_via_rest
         else:
-            response = _with_retries(lambda: self.client.chat.completions.create(**request))
-            output_text = response.choices[0].message.content or ""
-            usage = _response_usage(response)
-        payload = _parse_audit_payload(output_text, provider="Azure OpenAI")
+            create_completion = lambda request_payload: self.client.chat.completions.create(**request_payload)
+        request, output_text, payload, usage = _run_chat_tool_audit(
+            create_completion=create_completion,
+            model=self.model,
+            section=section,
+            current_items=current_items,
+            prompt_profile=self.prompt_profile,
+            max_output_tokens=self.max_output_tokens,
+            max_tokens_key="max_tokens",
+        )
         self._write_trace(section, request, output_text, payload, usage=usage)
         return payload
 
-    def _audit_repair_via_rest(self, request_payload: dict[str, Any]) -> str:
+    def _chat_completion_via_rest(self, request_payload: dict[str, Any]) -> dict[str, Any]:
         if not self.api_key:
             raise RuntimeError("Azure REST fallback requires an API key.")
         endpoint = self.azure_endpoint.rstrip("/")
@@ -252,7 +242,7 @@ class AzureChatSectionAuditRepairer:
         except urllib.error.HTTPError as exc:
             error_body = exc.read().decode("utf-8", errors="replace")
             raise RuntimeError(f"Azure OpenAI audit HTTP {exc.code}: {error_body[:1000]}") from exc
-        return payload["choices"][0]["message"].get("content") or ""
+        return payload
 
     def _write_trace(
         self,
@@ -268,12 +258,194 @@ class AzureChatSectionAuditRepairer:
         _write_trace(
             self.trace_dir,
             section,
-            provider_shape="azure_chat_completions",
+            provider_shape="azure_chat_completions_tools",
             request_payload=request_payload,
             response_text=response_text,
             response_payload=response_payload,
             usage=usage,
         )
+
+
+def _run_chat_tool_audit(
+    *,
+    create_completion,
+    model: str,
+    section: MarkdownSection,
+    current_items: list[dict[str, Any]],
+    prompt_profile: str,
+    max_output_tokens: int | None,
+    max_tokens_key: str,
+) -> tuple[dict[str, Any], str, dict[str, Any], dict[str, Any] | None]:
+    tools = audit_source_tool_schemas()
+    executor = AuditSourceToolExecutor(section, current_items)
+    messages: list[dict[str, Any]] = [
+        {
+            "role": "system",
+            "content": build_audit_repair_system_prompt(prompt_profile, section)
+            + "\n\n"
+            + _TOOL_AUDIT_SYSTEM_INSTRUCTIONS,
+        },
+        {
+            "role": "user",
+            "content": build_audit_repair_prompt(section, current_items, prompt_profile)
+            + "\n\n"
+            + _TOOL_AUDIT_USER_INSTRUCTIONS,
+        },
+    ]
+    requests: list[dict[str, Any]] = []
+    response_text_parts: list[str] = []
+    usage: dict[str, Any] | None = None
+
+    def send(tool_choice: dict[str, Any] | str = "auto") -> Any:
+        request: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "tools": tools,
+            "tool_choice": tool_choice,
+        }
+        if max_output_tokens:
+            request[max_tokens_key] = max_output_tokens
+        requests.append(copy.deepcopy(request))
+        return _with_retries(lambda: create_completion(request))
+
+    def handle(response: Any) -> bool:
+        nonlocal usage
+        usage = _merge_usage(usage, _response_usage(response))
+        message = _choice_message(response)
+        content = _message_content(message)
+        if content:
+            response_text_parts.append(content)
+        tool_calls = _message_tool_calls(message)
+        messages.append(_assistant_message_dict(message, tool_calls))
+        if not tool_calls:
+            return executor.final_payload is not None
+        for tool_call in tool_calls:
+            result_text = executor.execute_json(tool_call["name"], tool_call["arguments"])
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call["id"],
+                    "content": result_text,
+                }
+            )
+            if tool_call["name"] == "build_repaired_items":
+                response_text_parts.append(result_text)
+        return executor.final_payload is not None
+
+    if handle(send(_force_tool_choice("list_source_item_labels"))):
+        pass
+    else:
+        for _ in range(6):
+            if handle(send("auto")):
+                break
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "Continue the audit with source tools. If you have enough evidence, call "
+                        "build_repaired_items with the complete final item list."
+                    ),
+                }
+            )
+
+    if executor.final_payload is None:
+        messages.append(
+            {
+                "role": "user",
+                "content": (
+                    "You must now call build_repaired_items. Include every final item that should remain in this "
+                    "section; use preserve_current_label for unchanged source-backed items and source spans for "
+                    "new or corrected content/proof."
+                ),
+            }
+        )
+        handle(send(_force_tool_choice("build_repaired_items")))
+
+    if executor.final_payload is None:
+        raise RuntimeError("Audit tool workflow ended without build_repaired_items.")
+
+    payload = _parse_audit_payload(json.dumps(executor.final_payload, ensure_ascii=False), provider="audit source tools")
+    payload["tool_trace"] = executor.trace
+    request_record = {
+        "model": model,
+        "tool_workflow": "llm_declared_labels_source_span_tools",
+        "tools": tools,
+        "requests": requests,
+        "final_messages": messages,
+    }
+    response_text = "\n".join(part for part in response_text_parts if part).strip()
+    if not response_text:
+        response_text = json.dumps(payload, ensure_ascii=False)
+    return request_record, response_text, payload, usage
+
+
+_TOOL_AUDIT_SYSTEM_INSTRUCTIONS = """Audit source tool workflow:
+- You, not the tools, decide which mathematical items exist in the Markdown section.
+- First call list_source_item_labels with the labels/items you identify by reading the Markdown. The tool only records your list and checks literal anchors; it does not mine labels with hard-coded theorem-name rules.
+- Use search_source and extract_source_span to locate exact text spans for any content/proof that needs repair.
+- Do not handwrite repaired content/proof text. In the final build_repaired_items call, provide source spans for new or changed text so the tool copies from Markdown.
+- build_repaired_items must include the complete final item array for the section, including unchanged items that should remain."""
+
+
+_TOOL_AUDIT_USER_INSTRUCTIONS = """Use the available source tools rather than directly returning JSON.
+
+Recommended sequence:
+1. Call list_source_item_labels with your own source-item inventory.
+2. Search/extract spans for missing, truncated, mislabeled, or proof-boundary issues.
+3. Call build_repaired_items once, with all final items in source order."""
+
+
+def _force_tool_choice(name: str) -> dict[str, Any]:
+    return {"type": "function", "function": {"name": name}}
+
+
+def _choice_message(response: Any) -> Any:
+    if isinstance(response, dict):
+        choices = response.get("choices") or []
+        return (choices[0] if choices else {}).get("message") or {}
+    return response.choices[0].message
+
+
+def _message_content(message: Any) -> str:
+    if isinstance(message, dict):
+        return str(message.get("content") or "")
+    return str(getattr(message, "content", None) or "")
+
+
+def _message_tool_calls(message: Any) -> list[dict[str, str]]:
+    raw_calls = message.get("tool_calls") if isinstance(message, dict) else getattr(message, "tool_calls", None)
+    output: list[dict[str, str]] = []
+    for index, raw in enumerate(raw_calls or [], start=1):
+        if isinstance(raw, dict):
+            function = raw.get("function") or {}
+            call_id = str(raw.get("id") or f"tool_call_{index}")
+            name = str(function.get("name") or "")
+            arguments = str(function.get("arguments") or "{}")
+        else:
+            function = getattr(raw, "function", None)
+            call_id = str(getattr(raw, "id", None) or f"tool_call_{index}")
+            name = str(getattr(function, "name", "") or "")
+            arguments = str(getattr(function, "arguments", None) or "{}")
+        if name:
+            output.append({"id": call_id, "name": name, "arguments": arguments})
+    return output
+
+
+def _assistant_message_dict(message: Any, tool_calls: list[dict[str, str]]) -> dict[str, Any]:
+    output: dict[str, Any] = {"role": "assistant", "content": _message_content(message) or None}
+    if tool_calls:
+        output["tool_calls"] = [
+            {
+                "id": tool_call["id"],
+                "type": "function",
+                "function": {
+                    "name": tool_call["name"],
+                    "arguments": tool_call["arguments"],
+                },
+            }
+            for tool_call in tool_calls
+        ]
+    return output
 
 
 def _noop_payload(section: MarkdownSection, current_items: list[dict[str, Any]]) -> dict[str, Any]:
@@ -385,6 +557,9 @@ def _with_retries(fn, *, attempts: int = 3, delay: float = 5.0):
 
 
 def _response_usage(response: Any) -> dict[str, Any] | None:
+    if isinstance(response, dict):
+        usage = response.get("usage")
+        return usage if isinstance(usage, dict) else None
     usage = getattr(response, "usage", None)
     if usage is None:
         return None
@@ -398,3 +573,17 @@ def _response_usage(response: Any) -> dict[str, Any] | None:
         if value is not None:
             output[key] = value
     return output or None
+
+
+def _merge_usage(left: dict[str, Any] | None, right: dict[str, Any] | None) -> dict[str, Any] | None:
+    if right is None:
+        return left
+    if left is None:
+        return dict(right)
+    merged = dict(left)
+    for key, value in right.items():
+        if isinstance(value, (int, float)) and isinstance(merged.get(key), (int, float)):
+            merged[key] = merged[key] + value
+        else:
+            merged[key] = value
+    return merged

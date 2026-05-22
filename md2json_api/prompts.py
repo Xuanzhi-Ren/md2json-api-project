@@ -360,6 +360,13 @@ Conservative repair principles:
 - Do not invent dependencies.
 - If uncertain, keep repaired_items conservative and record the uncertainty in open_questions.
 
+When source tools are available:
+- You decide the source item inventory by reading the Markdown, just as in the first extraction/API-calls stage. Do not assume a fixed theorem-name regex or a fixed textbook style.
+- Call list_source_item_labels with your own identified labels/items; that tool only records your decision and checks literal anchors.
+- Use search_source and extract_source_span to locate exact source spans for repaired content/proof. The tools copy spans from the Markdown; they do not decide what counts as a theorem, definition, lemma, etc.
+- In build_repaired_items, enumerate the complete final item array. Preserve unchanged current items by label, and use source spans for any new or modified item text.
+- Never handwrite repaired content/proof text when a source span can be used.
+
 Output requirements:
 - audit_markdown must follow the ref-style report: section identifier/title, short verdict, current JSON summary, findings with issue type / affected labels / explanation / source excerpt / recommended action, then compact action summary.
 - patch_candidate must contain only add/update/delete actions. Use no actions for "no change".

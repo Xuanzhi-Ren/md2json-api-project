@@ -24,6 +24,12 @@ def build_parser() -> argparse.ArgumentParser:
     convert.add_argument("--azure-api-version", default=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-10-21"))
     convert.add_argument("--max-output-tokens", type=int, default=None)
     convert.add_argument(
+        "--llm-timeout",
+        type=float,
+        default=float(os.environ.get("MD2JSON_LLM_TIMEOUT", "600")),
+        help="LLM request timeout in seconds.",
+    )
+    convert.add_argument(
         "--prompt-profile",
         choices=list(PROMPT_PROFILES),
         default=os.environ.get("MD2JSON_PROMPT_PROFILE", "auto"),
@@ -91,6 +97,7 @@ def main(argv: list[str] | None = None) -> int:
             azure_endpoint=args.azure_endpoint,
             azure_api_version=args.azure_api_version,
             max_output_tokens=args.max_output_tokens,
+            llm_timeout=args.llm_timeout,
             prompt_profile=args.prompt_profile,
             audit_mode=args.audit_mode,
             structure_mode=args.structure_mode,

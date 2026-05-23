@@ -22,6 +22,7 @@ class AzureChatSectionExtractor:
         api_version: str,
         api_key: str | None = None,
         max_output_tokens: int | None = None,
+        timeout: float = 600,
         trace_dir: Path | None = None,
         prompt_profile: str = "auto",
     ) -> None:
@@ -30,6 +31,7 @@ class AzureChatSectionExtractor:
         self.api_version = api_version
         self.api_key = api_key
         self.max_output_tokens = max_output_tokens
+        self.timeout = timeout
         self.trace_dir = trace_dir
         self.prompt_profile = prompt_profile
         self._client = None
@@ -48,7 +50,7 @@ class AzureChatSectionExtractor:
             kwargs: dict[str, Any] = {
                 "azure_endpoint": self.azure_endpoint,
                 "api_version": self.api_version,
-                "timeout": 600,
+                "timeout": self.timeout,
             }
             if self.api_key:
                 kwargs["api_key"] = self.api_key
@@ -115,7 +117,7 @@ class AzureChatSectionExtractor:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=600) as response:
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             error_body = exc.read().decode("utf-8", errors="replace")

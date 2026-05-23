@@ -80,12 +80,14 @@ class OpenAIStructurePlanner:
         api_key: str | None = None,
         base_url: str | None = None,
         max_output_tokens: int | None = None,
+        timeout: float = 600,
         trace_dir: Path | None = None,
     ) -> None:
         self.model = model
         self.api_key = api_key
         self.base_url = base_url
         self.max_output_tokens = max_output_tokens
+        self.timeout = timeout
         self.trace_dir = trace_dir
         self._client = None
 
@@ -101,7 +103,7 @@ class OpenAIStructurePlanner:
                 raise RuntimeError(
                     "The openai package is not installed. Run: python3 -m pip install -r requirements.txt"
                 ) from exc
-            kwargs: dict[str, Any] = {"timeout": 180}
+            kwargs: dict[str, Any] = {"timeout": self.timeout}
             if self.api_key:
                 kwargs["api_key"] = self.api_key
             if self.base_url:
@@ -160,6 +162,7 @@ class AzureChatStructurePlanner:
         api_version: str,
         api_key: str | None = None,
         max_output_tokens: int | None = None,
+        timeout: float = 600,
         trace_dir: Path | None = None,
     ) -> None:
         self.model = model
@@ -167,6 +170,7 @@ class AzureChatStructurePlanner:
         self.api_version = api_version
         self.api_key = api_key
         self.max_output_tokens = max_output_tokens
+        self.timeout = timeout
         self.trace_dir = trace_dir
         self._client = None
 
@@ -184,7 +188,7 @@ class AzureChatStructurePlanner:
             kwargs: dict[str, Any] = {
                 "azure_endpoint": self.azure_endpoint,
                 "api_version": self.api_version,
-                "timeout": 180,
+                "timeout": self.timeout,
             }
             if self.api_key:
                 kwargs["api_key"] = self.api_key
@@ -243,7 +247,7 @@ class AzureChatStructurePlanner:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=180) as response:
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             error_body = exc.read().decode("utf-8", errors="replace")

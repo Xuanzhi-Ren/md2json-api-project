@@ -85,6 +85,7 @@ class ConverterConfig:
     azure_endpoint: str | None = None
     azure_api_version: str = "2024-10-21"
     max_output_tokens: int | None = None
+    llm_timeout: float = 600
     prompt_profile: str = "auto"
     audit_mode: str = "auto"
     structure_mode: str = "auto"
@@ -209,6 +210,7 @@ class MarkdownJsonConverter:
                 api_key=config.api_key,
                 base_url=config.base_url,
                 max_output_tokens=config.max_output_tokens,
+                timeout=config.llm_timeout,
             )
         if config.backend == "azure":
             if not config.azure_endpoint:
@@ -219,6 +221,7 @@ class MarkdownJsonConverter:
                 api_version=config.azure_api_version,
                 api_key=config.api_key,
                 max_output_tokens=config.max_output_tokens,
+                timeout=config.llm_timeout,
             )
         return NoopStructurePlanner()
 
@@ -234,6 +237,7 @@ class MarkdownJsonConverter:
                 api_key=config.api_key,
                 base_url=config.base_url,
                 max_output_tokens=config.max_output_tokens,
+                timeout=config.llm_timeout,
                 prompt_profile=config.prompt_profile,
             )
         if config.backend == "azure":
@@ -245,6 +249,7 @@ class MarkdownJsonConverter:
                 api_version=config.azure_api_version,
                 api_key=config.api_key,
                 max_output_tokens=config.max_output_tokens,
+                timeout=config.llm_timeout,
                 prompt_profile=config.prompt_profile,
             )
         raise ValueError(f"Unknown backend: {config.backend}")
@@ -261,6 +266,7 @@ class MarkdownJsonConverter:
                 api_key=config.api_key,
                 base_url=config.base_url,
                 max_output_tokens=config.max_output_tokens,
+                timeout=config.llm_timeout,
                 prompt_profile=config.prompt_profile,
             )
         if config.backend == "azure":
@@ -272,6 +278,7 @@ class MarkdownJsonConverter:
                 api_version=config.azure_api_version,
                 api_key=config.api_key,
                 max_output_tokens=config.max_output_tokens,
+                timeout=config.llm_timeout,
                 prompt_profile=config.prompt_profile,
             )
         return NoopSectionAuditRepairer()

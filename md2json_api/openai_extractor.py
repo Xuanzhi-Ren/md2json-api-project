@@ -18,6 +18,7 @@ class OpenAISectionExtractor:
         api_key: str | None = None,
         base_url: str | None = None,
         max_output_tokens: int | None = None,
+        timeout: float = 600,
         trace_dir: Path | None = None,
         prompt_profile: str = "auto",
     ) -> None:
@@ -25,6 +26,7 @@ class OpenAISectionExtractor:
         self.api_key = api_key
         self.base_url = base_url
         self.max_output_tokens = max_output_tokens
+        self.timeout = timeout
         self.trace_dir = trace_dir
         self.prompt_profile = prompt_profile
         self._client = None
@@ -46,7 +48,7 @@ class OpenAISectionExtractor:
                 kwargs["api_key"] = self.api_key
             if self.base_url:
                 kwargs["base_url"] = self.base_url
-            kwargs["timeout"] = 180
+            kwargs["timeout"] = self.timeout
             self._client = OpenAI(**kwargs)
         return self._client
 

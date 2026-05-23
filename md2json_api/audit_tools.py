@@ -243,6 +243,7 @@ class AuditSourceToolExecutor:
         for index, raw in enumerate(raw_items):
             built, validation, order_position = self._build_one_item(raw, raw_items[index + 1 :])
             validations.append(validation)
+            warnings.extend(str(warning) for warning in validation.get("warnings", []) if str(warning))
             if built is None:
                 warnings.append(validation["message"])
                 continue
@@ -292,7 +293,8 @@ class AuditSourceToolExecutor:
         current = self.current_by_label.get(preserve_label)
         content_span = raw.get("content_span")
         proof_span = raw.get("proof_span")
-        order_position = _find_first(self.section.text, str(raw.get("source_order_anchor") or "")) or 10**12
+        anchor_position = _find_first(self.section.text, str(raw.get("source_order_anchor") or ""))
+        order_position = anchor_position if anchor_position is not None else 10**12
 
         content_result = None
         proof_result = None
@@ -302,11 +304,26 @@ class AuditSourceToolExecutor:
             if content_result.get("found"):
                 order_position = min(order_position, int(content_result["char_start"]))
         if isinstance(proof_span, dict):
-            proof_result = _extract_span_from_source(self.section, proof_span)
+            proof_search_start = int(content_result["char_end"]) if content_result and content_result.get("found") else 0
+            proof_result = _extract_span_from_source(self.section, proof_span, search_start=proof_search_start)
         if content_result is None and current is not None and not item_text_is_source_backed(current, self.section.text):
             fallback = self._fallback_item_from_declared_anchors(raw, following_raws)
             if fallback is not None:
                 order_position = min(order_position, int(fallback["char_start"]))
+
+        item_start = _span_start(content_result)
+        if item_start is None:
+            item_start = anchor_position
+        if item_start is None and fallback is not None:
+            item_start = int(fallback["char_start"])
+        if item_start is None:
+            item_start = 0
+        next_anchor_pos = _next_following_anchor_position(self.section.text, following_raws, item_start + 1)
+        span_warnings: list[str] = []
+        if content_result is not None and content_result.get("found"):
+            span_warnings.extend(_clip_span_to_next_anchor(self.section, content_result, next_anchor_pos, label, "content"))
+        if proof_result is not None and proof_result.get("found"):
+            span_warnings.extend(_clip_span_to_next_anchor(self.section, proof_result, next_anchor_pos, label, "proof"))
 
         validation = {
             "label": label,
@@ -314,6 +331,7 @@ class AuditSourceToolExecutor:
             "proof_source": "span" if proof_result else "current_or_null",
             "ok": True,
             "message": "",
+            "warnings": span_warnings,
         }
 
         if content_result is not None and not content_result.get("found"):
@@ -439,7 +457,12 @@ def _tool_action_schema() -> dict[str, Any]:
     }
 
 
-def _extract_span_from_source(section: MarkdownSection, spec: dict[str, Any]) -> dict[str, Any]:
+def _extract_span_from_source(
+    section: MarkdownSection,
+    spec: dict[str, Any],
+    *,
+    search_start: int = 0,
+) -> dict[str, Any]:
     start_anchor = str(spec.get("start_anchor") or "")
     end_anchor = spec.get("end_anchor")
     start_occurrence = max(1, int(spec.get("start_occurrence") or 1))
@@ -449,7 +472,8 @@ def _extract_span_from_source(section: MarkdownSection, spec: dict[str, Any]) ->
 
     if not start_anchor:
         return {"found": False, "error": "empty start_anchor"}
-    start_anchor_pos = _find_nth(section.text, start_anchor, start_occurrence)
+    search_start = max(0, min(len(section.text), int(search_start)))
+    start_anchor_pos = _find_nth(section.text, start_anchor, start_occurrence, start=search_start)
     if start_anchor_pos is None:
         return {"found": False, "error": f"start_anchor not found: {start_anchor[:80]!r}"}
     start = start_anchor_pos if include_start else start_anchor_pos + len(start_anchor)
@@ -479,7 +503,63 @@ def _extract_span_from_source(section: MarkdownSection, spec: dict[str, Any]) ->
         "line_end": _absolute_line_at(section, max(start, end - 1)),
         "start_anchor_offset": start_anchor_pos,
         "end_anchor_offset": end_anchor_pos,
+        "search_start": search_start,
     }
+
+
+def _span_start(result: dict[str, Any] | None) -> int | None:
+    if not result or not result.get("found"):
+        return None
+    return int(result["char_start"])
+
+
+def _next_following_anchor_position(
+    source_text: str,
+    following_raws: list[dict[str, Any]],
+    start: int,
+) -> int | None:
+    candidates: list[int] = []
+    for following in following_raws:
+        anchor = str(following.get("source_order_anchor") or "").strip()
+        if not anchor:
+            continue
+        pos = _find_first_after(source_text, anchor, start)
+        if pos is not None:
+            candidates.append(pos)
+    return min(candidates) if candidates else None
+
+
+def _clip_span_to_next_anchor(
+    section: MarkdownSection,
+    result: dict[str, Any],
+    next_anchor_pos: int | None,
+    label: str,
+    field_name: str,
+) -> list[str]:
+    if next_anchor_pos is None:
+        return []
+    char_start = int(result["char_start"])
+    char_end = int(result["char_end"])
+    if char_start >= next_anchor_pos:
+        message = (
+            f"{field_name} span for {label} starts at or after the next item anchor; "
+            "the model should choose an anchor inside the current item."
+        )
+        result["found"] = False
+        result["error"] = message
+        return [
+            message
+        ]
+    if char_end <= next_anchor_pos:
+        return []
+
+    result["text"] = section.text[char_start:next_anchor_pos]
+    result["char_end"] = next_anchor_pos
+    result["line_end"] = _absolute_line_at(section, max(char_start, next_anchor_pos - 1))
+    result["clipped_to_next_item_anchor"] = True
+    return [
+        f"{field_name} span for {label} crossed the next item anchor and was clipped to preserve item boundaries."
+    ]
 
 
 def normalize_tool_actions(actions: list[Any]) -> list[dict[str, Any]]:

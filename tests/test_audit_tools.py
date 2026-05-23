@@ -131,6 +131,94 @@ class AuditSourceToolTests(unittest.TestCase):
         )
         self.assertEqual(result["tool_validation"]["declared_labels_count"], 2)
 
+    def test_proof_span_searches_after_content_and_stops_at_next_item_anchor(self) -> None:
+        section = MarkdownSection(
+            index=3,
+            context=SectionContext(
+                chapter="Test notes",
+                chapter_number="",
+                section="3. Boundary section",
+                section_number="3",
+            ),
+            text=(
+                "Intro paragraph. In general, this sentence is not a proof.\n\n"
+                "Corollary 3.1. A statement with a proof.\n\n"
+                "Proof. In general,\n"
+                "the proof begins here and should stop before the next item.\n\n"
+                "Corollary 3.2. The next statement."
+            ),
+            start_line=30,
+            end_line=38,
+            heading_level=3,
+            source_heading="3. Boundary section",
+        )
+        executor = AuditSourceToolExecutor(section, [])
+
+        result = executor.execute(
+            "build_repaired_items",
+            {
+                "audit_markdown": "Repair spans with ambiguous proof anchor.",
+                "overall_assessment": "moderate repair",
+                "actions": [],
+                "open_questions": [],
+                "items": [
+                    {
+                        "label": "Corollary 3.1",
+                        "env": "cor",
+                        "number_components": ["3", "1"],
+                        "dependencies": [],
+                        "content_span": {
+                            "start_anchor": "Corollary 3.1. A statement with a proof.",
+                            "end_anchor": "Proof. In general,",
+                            "start_occurrence": 1,
+                            "end_occurrence": 1,
+                            "include_start": True,
+                            "include_end": False,
+                        },
+                        "proof_span": {
+                            "start_anchor": "In general,",
+                            "end_anchor": None,
+                            "start_occurrence": 1,
+                            "end_occurrence": 1,
+                            "include_start": True,
+                            "include_end": False,
+                        },
+                        "preserve_current_label": None,
+                        "source_order_anchor": "Corollary 3.1.",
+                        "reason": "copy first corollary from source",
+                    },
+                    {
+                        "label": "Corollary 3.2",
+                        "env": "cor",
+                        "number_components": ["3", "2"],
+                        "dependencies": [],
+                        "content_span": {
+                            "start_anchor": "Corollary 3.2. The next statement.",
+                            "end_anchor": None,
+                            "start_occurrence": 1,
+                            "end_occurrence": 1,
+                            "include_start": True,
+                            "include_end": False,
+                        },
+                        "proof_span": None,
+                        "preserve_current_label": None,
+                        "source_order_anchor": "Corollary 3.2.",
+                        "reason": "copy next corollary from source",
+                    },
+                ],
+            },
+        )
+
+        items = result["repaired_items"]
+        self.assertEqual([item["label"] for item in items], ["Corollary 3.1", "Corollary 3.2"])
+        self.assertEqual(
+            items[0]["proof"],
+            "In general,\nthe proof begins here and should stop before the next item.",
+        )
+        self.assertNotIn("Intro paragraph", items[0]["proof"])
+        self.assertNotIn("Corollary 3.2", items[0]["proof"])
+        self.assertIn("clipped to preserve item boundaries", result["tool_validation"]["warnings"][0])
+
     def test_preserved_item_with_non_source_backed_text_is_repaired_from_declared_anchors(self) -> None:
         section = MarkdownSection(
             index=9,

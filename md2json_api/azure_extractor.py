@@ -48,7 +48,7 @@ class AzureChatSectionExtractor:
             kwargs: dict[str, Any] = {
                 "azure_endpoint": self.azure_endpoint,
                 "api_version": self.api_version,
-                "timeout": 180,
+                "timeout": 600,
             }
             if self.api_key:
                 kwargs["api_key"] = self.api_key
@@ -115,7 +115,7 @@ class AzureChatSectionExtractor:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=180) as response:
+            with urllib.request.urlopen(req, timeout=600) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             error_body = exc.read().decode("utf-8", errors="replace")

@@ -339,9 +339,10 @@ class AuditSourceToolExecutor:
             validation["message"] = f"Could not extract content span for {label}: {content_result.get('error')}"
             return None, validation, order_position
         if proof_result is not None and not proof_result.get("found"):
-            validation["ok"] = False
-            validation["message"] = f"Could not extract proof span for {label}: {proof_result.get('error')}"
-            return None, validation, order_position
+            message = f"Could not extract proof span for {label}: {proof_result.get('error')}"
+            validation["proof_source"] = "current_or_null_after_failed_span"
+            validation["warnings"].append(message)
+            proof_result = None
 
         if content_result is not None:
             content = str(content_result.get("text") or "").strip()

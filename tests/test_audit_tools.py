@@ -303,6 +303,88 @@ class AuditSourceToolTests(unittest.TestCase):
         self.assertEqual(items[0]["proof"], "Apply Theorem 9.2. ||")
         self.assertEqual(result["tool_validation"]["warnings"], [])
 
+    def test_failed_proof_span_does_not_drop_item(self) -> None:
+        section = MarkdownSection(
+            index=2,
+            context=SectionContext(
+                chapter="Test notes",
+                chapter_number="",
+                section="2. Inserted remarks",
+                section_number="2",
+            ),
+            text=(
+                "Proposition 7.1. A statement whose proof follows an inserted remark.\n\n"
+                "Preliminary remark. This is a separate source item before the proof.\n\n"
+                "Proof of proposition 7.1. The proof starts after the preliminary remark.\n\n"
+                "Note. A note after the proof."
+            ),
+            start_line=20,
+            end_line=26,
+            heading_level=2,
+            source_heading="Inserted remarks",
+        )
+        executor = AuditSourceToolExecutor(section, [])
+
+        result = executor.execute(
+            "build_repaired_items",
+            {
+                "audit_markdown": "Proof span crosses an inserted source item.",
+                "overall_assessment": "moderate repair",
+                "actions": [],
+                "open_questions": [],
+                "items": [
+                    {
+                        "label": "Proposition 7.1",
+                        "env": "prop",
+                        "number_components": ["7", "1"],
+                        "dependencies": [],
+                        "content_span": {
+                            "start_anchor": "Proposition 7.1. A statement",
+                            "end_anchor": "Preliminary remark.",
+                            "start_occurrence": 1,
+                            "end_occurrence": 1,
+                            "include_start": True,
+                            "include_end": False,
+                        },
+                        "proof_span": {
+                            "start_anchor": "Proof of proposition 7.1.",
+                            "end_anchor": "Note.",
+                            "start_occurrence": 1,
+                            "end_occurrence": 1,
+                            "include_start": False,
+                            "include_end": False,
+                        },
+                        "preserve_current_label": None,
+                        "source_order_anchor": "Proposition 7.1. A statement",
+                        "reason": "keep proposition even if proof span is invalid",
+                    },
+                    {
+                        "label": "Remark 7.1-extra-1",
+                        "env": "remark",
+                        "number_components": [],
+                        "dependencies": [],
+                        "content_span": {
+                            "start_anchor": "Preliminary remark.",
+                            "end_anchor": "Proof of proposition 7.1.",
+                            "start_occurrence": 1,
+                            "end_occurrence": 1,
+                            "include_start": True,
+                            "include_end": False,
+                        },
+                        "proof_span": None,
+                        "preserve_current_label": None,
+                        "source_order_anchor": "Preliminary remark.",
+                        "reason": "separate inserted remark",
+                    },
+                ],
+            },
+        )
+
+        items = result["repaired_items"]
+        self.assertEqual([item["label"] for item in items], ["Proposition 7.1", "Remark 7.1-extra-1"])
+        self.assertEqual(items[0]["proof"], None)
+        self.assertIn("Could not extract proof span for Proposition 7.1", result["tool_validation"]["warnings"][-1])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -303,7 +303,7 @@ class AuditSourceToolTests(unittest.TestCase):
         self.assertEqual(items[0]["proof"], "Apply Theorem 9.2. ||")
         self.assertEqual(result["tool_validation"]["warnings"], [])
 
-    def test_failed_proof_span_does_not_drop_item(self) -> None:
+    def test_delayed_proof_span_after_next_anchor_is_kept_with_warning(self) -> None:
         section = MarkdownSection(
             index=2,
             context=SectionContext(
@@ -382,8 +382,8 @@ class AuditSourceToolTests(unittest.TestCase):
 
         items = result["repaired_items"]
         self.assertEqual([item["label"] for item in items], ["Proposition 7.1", "Remark 7.1-extra-1"])
-        self.assertEqual(items[0]["proof"], None)
-        self.assertIn("Could not extract proof span for Proposition 7.1", result["tool_validation"]["warnings"][-1])
+        self.assertEqual(items[0]["proof"], "The proof starts after the preliminary remark.")
+        self.assertIn("may be an explicit delayed proof", result["tool_validation"]["warnings"][-1])
 
 
 if __name__ == "__main__":

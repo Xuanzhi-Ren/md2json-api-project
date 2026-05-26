@@ -546,6 +546,11 @@ def _clip_span_to_next_anchor(
             f"{field_name} span for {label} starts at or after the next item anchor; "
             "the model should choose an anchor inside the current item."
         )
+        if field_name == "proof":
+            return [
+                message
+                + " Keeping the resolved proof span because it may be an explicit delayed proof."
+            ]
         result["found"] = False
         result["error"] = message
         return [

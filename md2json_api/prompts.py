@@ -67,6 +67,7 @@ COMMON_RULES = """Extraction rules:
 - If the proof boundary is ambiguous, keep the text in content and set proof to null.
 - Do not invent theorem numbers, dependencies, missing statements, proof text, or hidden structure.
 - Keep one item per logical extracted block. Do not split one theorem into several items just because it has cases, equations, or paragraphs.
+- In an Exercises/Problems subsection, split explicitly numbered exercises/problems into separate items. Do not merge a list such as "1. ... 2. ... 3. ..." into one exercise block; use labels like "Exercise 1", "Exercise 2", etc. when those numbers are printed in the source.
 - Return valid JSON only. The response schema is enforced.
 """
 
@@ -349,6 +350,7 @@ Audit targets:
 - proof should be merged: proof was split when the boundary is not explicit or belongs elsewhere.
 - duplicate or spurious item: JSON has a repeated item or an item not supported by the source.
 - wrong item boundary: one source item was split into fragments, or multiple source items were merged incorrectly.
+- merged exercises/problems: an Exercises/Problems subsection has explicitly numbered entries, but the current JSON combines them into one block instead of one item per numbered entry.
 - wrong ordering, numbering, or label style. Explicitly numbered source items must keep their source labels, while unnumbered inferred items must use synthetic "-extra-" labels.
 - broken dependency: dependency is invented, malformed, or an explicit dependency is clearly missing.
 
@@ -544,6 +546,7 @@ Chapter and section metadata audit:
 - Treat tables of contents, reading guides, series title pages, comments/references sections, bibliography entries, and index entries as unreliable sources for canonical JSON naming unless the document itself is only that material.
 - Do not inherit a Part heading as chapter_number merely because it appears before a section. Part I/II/VIII headings are often structural dividers inside a complete book; they should not become chapter_number for ordinary numbered book sections unless the source truly uses parts as the JSON chapter level.
 - For a complete book organized directly into numbered sections such as "SECTION 1", "SECTION 2", ..., prefer a book-level chapter such as "Complete book" and an empty chapter_number, while keeping section_number as "1", "2", etc.
+- If a complete book contains multiple explicit chapter headings, keep document_title as the book title and use top-level chapter/chapter_number only as fallback metadata. Each section entry must carry the true chapter and chapter_number active at that section, not "Complete book".
 - For a single chapter excerpt organized into subsections, keep the true chapter number and use subsection numbers as section_number.
 - For a paper, keep chapter_number empty unless there is an explicit chapter-like unit in the source.
 - Do not prefix section_number with a stale chapter or part number. For example, do not turn section "13" into "VIII.13" or bibliography author "A. Brøndsted" into "VIII.A".
@@ -612,7 +615,7 @@ Return:
 1. document_title
 2. chapter and chapter_number
 3. front_matter_ranges
-4. sections with section_number, section_title, start_line, end_line, heading_source, confidence, reason
+4. sections with section_number, section_title, chapter, chapter_number, start_line, end_line, heading_source, confidence, reason
 5. back_matter_ranges
 6. warnings
 """

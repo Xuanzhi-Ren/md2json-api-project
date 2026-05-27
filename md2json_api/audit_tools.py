@@ -486,10 +486,9 @@ def _extract_span_from_source(
         end_anchor_text = str(end_anchor)
         if not end_anchor_text:
             return {"found": False, "error": "empty end_anchor"}
-        search_from = start_anchor_pos + len(start_anchor)
-        end_anchor_pos = _find_nth(section.text, end_anchor_text, end_occurrence, start=search_from)
+        end_anchor_pos = _find_nth(section.text, end_anchor_text, end_occurrence, start=0)
         if end_anchor_pos is None:
-            return {"found": False, "error": f"end_anchor not found after start: {end_anchor_text[:80]!r}"}
+            return {"found": False, "error": f"end_anchor occurrence not found: {end_anchor_text[:80]!r}"}
         end = end_anchor_pos + len(end_anchor_text) if include_end else end_anchor_pos
 
     if end < start:

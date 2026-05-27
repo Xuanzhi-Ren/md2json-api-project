@@ -219,6 +219,64 @@ class AuditSourceToolTests(unittest.TestCase):
         self.assertNotIn("Corollary 3.2", items[0]["proof"])
         self.assertIn("clipped to preserve item boundaries", result["tool_validation"]["warnings"][0])
 
+    def test_end_occurrence_is_resolved_from_section_start(self) -> None:
+        section = MarkdownSection(
+            index=4,
+            context=SectionContext(
+                chapter="Test notes",
+                chapter_number="",
+                section="4. Repeated boundary section",
+                section_number="4",
+            ),
+            text=(
+                "Example 1. Earlier content.\n\n"
+                "Repeated transition sentence.\n\n"
+                "Example 2. Later content that should be extracted.\n\n"
+                "Repeated transition sentence.\n\n"
+                "Theorem 3. The next item."
+            ),
+            start_line=40,
+            end_line=48,
+            heading_level=3,
+            source_heading="4. Repeated boundary section",
+        )
+        executor = AuditSourceToolExecutor(section, [])
+
+        result = executor.execute(
+            "build_repaired_items",
+            {
+                "audit_markdown": "Repair a span with a repeated end anchor.",
+                "overall_assessment": "minor repair",
+                "actions": [],
+                "open_questions": [],
+                "items": [
+                    {
+                        "label": "Example 2",
+                        "env": "example",
+                        "number_components": ["2"],
+                        "dependencies": [],
+                        "content_span": {
+                            "start_anchor": "Example 2.",
+                            "end_anchor": "Repeated transition sentence.",
+                            "start_occurrence": 1,
+                            "end_occurrence": 2,
+                            "include_start": True,
+                            "include_end": False,
+                        },
+                        "proof_span": None,
+                        "preserve_current_label": None,
+                        "source_order_anchor": "Example 2.",
+                        "reason": "copy the later example using the global second end anchor",
+                    },
+                ],
+            },
+        )
+
+        items = result["repaired_items"]
+        self.assertEqual([item["label"] for item in items], ["Example 2"])
+        self.assertEqual(items[0]["content"], "Example 2. Later content that should be extracted.")
+        self.assertEqual(result["tool_validation"]["warnings"], [])
+
     def test_preserved_item_with_non_source_backed_text_is_repaired_from_declared_anchors(self) -> None:
         section = MarkdownSection(
             index=9,

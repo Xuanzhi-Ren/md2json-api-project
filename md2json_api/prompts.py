@@ -48,6 +48,7 @@ FIELD_SPEC = """Field specification for every item:
 
 - dependencies:
   Default to []. Fill only when the source explicitly names a dependency and the name is recoverable without guessing, such as "by Theorem 2.1" or "using Lemma 3.4". Use the same canonical source-aware labels as label, so an explicit dependency on "Theorem 6.1" stays "Theorem 6.1" rather than a synthetic local-index label. Do not infer hidden dependencies.
+  Treat dependencies as source-internal mathematical item labels only. Do not put bibliography citations, bracketed references like "[12]", author-year references, book/paper titles, page references, or theorem numbers from other works into dependencies. Preserve external citations verbatim in content/proof.
 
 - proof:
   Use null unless a proof block is explicitly marked. When a proof boundary is explicit, put the proof body in proof and keep the statement in content. Do not create standalone proof items.
@@ -353,6 +354,7 @@ Audit targets:
 - merged exercises/problems: an Exercises/Problems subsection has explicitly numbered entries, but the current JSON combines them into one block instead of one item per numbered entry.
 - wrong ordering, numbering, or label style. Explicitly numbered source items must keep their source labels, while unnumbered inferred items must use synthetic "-extra-" labels.
 - broken dependency: dependency is invented, malformed, or an explicit dependency is clearly missing.
+- external reference dependency: bibliography citations, bracketed references like "[12]", author-year references, book/paper titles, page references, or theorem numbers from other works should not appear in dependencies.
 
 Conservative repair principles:
 - Preserve current JSON whenever it is defensible.
@@ -360,6 +362,7 @@ Conservative repair principles:
 - Do not add ordinary explanatory paragraphs as remarks unless they are central definition/notation/opening blocks.
 - Split proof only when the boundary is explicit.
 - Do not invent dependencies.
+- Do not treat external literature references as missing dependencies; if they appear in dependencies, remove them while preserving the citation in content/proof.
 - If uncertain, keep repaired_items conservative and record the uncertainty in open_questions.
 
 When source tools are available:

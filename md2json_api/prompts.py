@@ -294,6 +294,7 @@ When source tools are available:
 - Use search_source and extract_source_span to locate exact source spans for repaired content/proof. The tools copy spans from the Markdown; they do not decide what counts as a theorem, definition, lemma, etc.
 - Choose source anchors that are long enough to be unique. Prefer the complete visible item heading plus the opening words/formula for content spans. For proof spans, prefer the explicit proof marker plus the item label and distinctive nearby words/formulas rather than generic phrases.
 - Make source_order_anchor the exact visible heading or opening sentence of the item itself, not a nearby note, preliminary remark, or proof marker.
+- In build_repaired_items, set source_order_occurrence to the 1-based occurrence of source_order_anchor from the beginning of the supplied Markdown section.
 - Proof spans in build_repaired_items are resolved after that item's content span. Content and proof spans must stay within the current item and must not cross the next item's source_order_anchor.
 - In build_repaired_items, enumerate the complete final item array. Preserve unchanged current items by label, and use source spans for any new or modified item text.
 - Never handwrite repaired content/proof text when a source span can be used.

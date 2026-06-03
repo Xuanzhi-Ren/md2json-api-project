@@ -423,6 +423,7 @@ _TOOL_AUDIT_SYSTEM_INSTRUCTIONS = """Audit source tool workflow:
 - Choose anchors that are long enough to be unique in the section: prefer the full visible item heading plus the opening words/formula for content spans. For proof spans, remember that include_start=false excludes the entire start_anchor; use it only when start_anchor is just the proof marker to remove, not proof-body text. If you include the first proof-body words in start_anchor, set include_start=true. Avoid generic anchors such as "In general," unless search_source shows the intended occurrence is unambiguous.
 - Make source_order_anchor the exact visible heading or opening sentence of the item itself, not a nearby note, preliminary remark, or proof marker.
 - Set source_order_occurrence to the 1-based occurrence of source_order_anchor from the beginning of the supplied Markdown section.
+- Occurrence counts exact case-sensitive occurrences of the exact anchor string, not semantic/math-equivalent occurrences.
 - In build_repaired_items, proof_span anchors are resolved after the item's content_span, and content/proof spans must not cross the next item's source_order_anchor.
 - Dependencies are source-internal mathematical item labels only; do not put bibliography citations, bracketed references, author-year references, book/paper titles, page references, or theorem numbers from other works into dependencies.
 - Do not handwrite repaired content/proof text. In the final build_repaired_items call, provide source spans for new or changed text so the tool copies from Markdown.

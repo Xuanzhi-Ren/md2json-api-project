@@ -93,6 +93,8 @@ FIELD_SPEC = EXTRACTION_FIELD_SPEC
 SPAN_INCLUSION_RULES = """Span inclusion rules:
 
 - start_occurrence and end_occurrence are 1-based counts from the beginning of the supplied Markdown section.
+- Occurrence counts exact case-sensitive occurrences of the exact anchor string, not semantic/math-equivalent occurrences.
+- Choose anchors that are long enough to be unique in the section: prefer the full visible item heading plus the opening words/formula for content spans, and a unique next boundary for excluded end_anchor values.
 - include_start/include_end control whether the full anchor string itself is copied into the field.
 - If include_start is false, the copied text starts after the entire start_anchor. Therefore, do not put proof-body words or formulas inside a start_anchor that will be excluded.
 - If include_end is false, the copied text stops before the entire end_anchor. Therefore, do not put statement/proof text that must be preserved inside an excluded end_anchor.
@@ -542,6 +544,10 @@ def build_structure_prompt(
 Source file: {source_name}
 Total source lines: {source_line_count}
 Prompt profile: {prompt_profile}
+
+If Prompt profile is textbook, chapter-end problem/exercise/application blocks such as
+Problems, Exercises, Review Problems, Applications, or Additional Problems are canonical
+sections. Put them in sections, not back_matter_ranges.
 
 Hard splitter draft sections:
 {chr(10).join(hard_lines) if hard_lines else "(none)"}
